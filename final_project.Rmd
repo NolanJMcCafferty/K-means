@@ -1,0 +1,262 @@
+---
+title: "Final Project -- K-means"
+author: "Nolan McCafferty"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(factoextra)
+library(cowplot)
+```
+
+## Introduction
+
+I have chosen to explore the k-means clustering algorithm for my final project. Clustering in general is a set of techniques for finding groups of observations with a data set. Thus, the goal is to have observations in the same group be similar to each other and observations in different groups to be different. Clustering is an unsupervised method because we do not have a response variable to train on. K-means is the simplest and most commonly used clustering algorithm for splitting a data set into $k$ groups. The reason I have chosen to analyze K-means is because I was once asked about the specifics of it in an ineterview and did not know the answer (Yikes).  
+
+## Set Up 
+
+The first step in classifying observations into groups is to determine the metric used for "similarity". To evaluate the similarity of observations we use a distance measurement. The most common measure is $\textit{ Euclidean}$ distance:
+
+
+\begin{equation}
+d_{euc} (x1,x2) = \sqrt{\sum_{i=1}^{n} (x_{1i} - x_{2i})^2}
+\end{equation}
+
+where $x_1$ and $x_2$ are $n$-length vectors. 
+
+Other methods include $\textit{Manhattan}$ distance, which uses the absolute value, and various correlation-based distance measures. The Pearson correlation distance is defined as follows:
+
+
+\begin{equation}
+d_{pear} (x_1, x_2) = 1 - \frac{\sum_{i=1}^{n} (x_{1i} - \bar{x_1})(x_{2i} - \bar{x_2})}{\sqrt{\sum_{i=1}^{n} (x_{1i} - \bar{x_1})^2 \sum_{i=1}^{n}(x_{2i} - \bar{x_2})^2}}
+\end{equation}
+
+The k-means clustering algorithm partitions a data set into $k$ groups (clusters). The number of clusters $k$ is pre-specified by the analyst. For successful clustering, we want high intra-cluster similarty and low inter-cluster similarity. Each of the clusters is represented by its centroid--the mean of the points assigned to the cluster. The key idea behind the k-means algorithm is to minimize the total intra-cluster variation. While there are several k-means algorithms out there, we will focus on the standard one: the Hartigan-Wong algorithm (1979). The HW algorithm defines the total intra-cluster variation as the sum of squared Euclidean distances between observations and their respective centroids:
+
+\begin{equation}
+Z(c_j) = \sum_{x_i \in c_j} (x_i - \mu_j)^2 
+\end{equation}
+
+where $x_i$ is an observation in cluster $c_j$ and $\mu_j$ is the mean of the observations in cluster $c_j$. Thus, the goal is to minimize this value over all the clusters:
+
+\begin{equation}
+min \sum_{j=1}^{k} Z(c_j) = min \sum_{j=1}^{k} \sum_{x_i \in c_j} (x_i - \mu_j)^2 
+\end{equation}
+
+
+## Algorithm
+
+\begin{enumerate}
+\item Choose the number of clusters $k$ that we want the observations grouped into. 
+
+\item Select $k$ random observations from the data to serve as the initial centroids for the clusters. 
+
+\item Assign each observation to their closest centroid using Euclidean distance. 
+
+\item For each cluster, update the centroid by calculating the new mean values of all the observations in the cluster. The centroid for the jth cluster is a $p$-dimensional vector containing the means of all the variables for the points in the jth cluster--where $p$ is the number of variables. 
+
+\item Minimize the total intra-cluster sum of squares (Eq. 4), i.e. iterate steps 3 and 4 until the cluster assignments stop changing or the maximum number of iterations is reached (10 by default in R).
+
+\end{enumerate}
+
+Here is my code for a function that executes k-means clustering:
+
+\vspace{5mm}
+
+```{r}
+# function takes the data as a data frame and the number of clusters
+my.k.means <- function(data, num.clusters) {
+  num.iter <- 4
+  clusters <- list()
+  centroids <- list()
+  for (j in 1:4) {
+    if (j == 1) {
+      centroids[[j]] <- data %>%
+        sample_n(num.clusters)
+    } else {
+        centroids[[j]] <- setNames(data.frame(matrix(ncol=2, nrow=num.clusters)), 
+                                   c("x", "y"))
+        for (m in 1:num.clusters) {
+          centroids[[j]][m,] <- colMeans(data[which(clusters[[j-1]] == m),])
+        }
+    }
+    cluster <- c()
+    for (i in 1:nrow(data)) {
+      dist <- c()
+      for (k in 1:num.clusters) {
+        dist[k] <- sum((data[i,] - centroids[[j]][k,])^2)
+      }
+      cluster[i] <- which.min(dist)
+    }
+    clusters[[j]] <- cluster
+  }
+  return(list(labels=clusters, means=centroids))
+}
+```
+
+## Simple Example
+
+The following is a simple 2D example of my k-means function. The plots show the evolution of the clustering through the four iterations of the algorithm. 
+
+\vspace{5mm}
+
+```{r echo=FALSE}
+set.seed(47)
+k <- 4
+n <- 20
+x <- c(rnorm(n), rnorm(n, 6), rnorm(n), rnorm(n, 6))
+y <- c(rnorm(n), rnorm(n, 6), rnorm(n, 6), rnorm(n))
+data <- data.frame(cbind(x,y))
+kmeans <- my.k.means(data, k)
+centers <- kmeans$means
+clusters <- kmeans$labels
+
+p1 <- data %>%
+    ggplot(aes(x=x, y=y, color=as.factor(clusters[[1]]))) + geom_point() + 
+    geom_point(data=centers[[1]], aes(x=x, y=y, color=as.factor(1:k)), size=5) + 
+    theme_gray() + ggtitle("Iteration 1") + guides(color=FALSE)
+
+
+p2 <- data %>%
+    ggplot(aes(x=x, y=y, color=as.factor(clusters[[2]]))) + geom_point() + 
+    geom_point(data=centers[[2]], aes(x=x, y=y, color=as.factor(1:k)), size=5) + 
+    theme_gray() + ggtitle("Iteration 2") + guides(color=FALSE)
+
+
+p3 <- data %>%
+    ggplot(aes(x=x, y=y, color=as.factor(clusters[[3]]))) + geom_point() + 
+    geom_point(data=centers[[3]], aes(x=x, y=y, color=as.factor(1:k)), size=5) + 
+    theme_gray() + ggtitle("Iteration 3") + guides(color=FALSE)
+
+p4 <- data %>%
+    ggplot(aes(x=x, y=y, color=as.factor(clusters[[4]]))) + geom_point() + 
+    geom_point(data=centers[[4]], aes(x=x, y=y, color=as.factor(1:k)), size=5) + 
+    theme_gray() + ggtitle("Iteration 4") + guides(color=FALSE)
+
+plot_grid(p1,p2,p3,p4)
+```
+
+## R Function
+
+As usual, R has a convenient built in function called `kmeans`. The `kmeans` function takes $centers$, $max.iter$, $nstart$, and $algorithm$ as parameters. Unsurprisingly, $max.iter$ is the maximum number of iterations for the algorithm to run through. The parameter $centers$ can either be a list of the coordinates for the centroids or $k$--the number of centroids. If $centers$ is a number, $nstart$ is the number of initial configurations to run through, picking the iteration that produces the lowest final intra-cluster variance. It is often recommended to set $nstart = 25$ to generate 25 initial configurations. Finally, $algorithm$ gives a choice of the k-means algorithm to use (Hartigan-Wong, Lloyd, Forgy, or MacQueen) and used our HW algorithm by default. The output of the `kmeans` function includes a vector of integers indicating the cluster to which each observation is designated, the cluster centers, the number of points in each cluster, each intra-cluster sum of squares, and the total intra-cluster sum of squares. 
+
+There is also a handy function in the R package `factoextra` called `fviz_cluster` to visualize the output from `kmeans` nicely. If the observations have more than 2 dimensions, `fviz_cluster` will plot the first two principle components that explain the majority of the variance after performing principle component analysis (PCA). Here is what looks like for our toy data set:
+
+\vspace{5mm}
+
+```{r fig.height=4}
+clustered.data <- kmeans(data, centers = 4, nstart = 25)
+fviz_cluster(clustered.data, data = data, geom = "point")
+```
+
+Since the number of clusters $k$ must be given to the algorithm, it is important that the analyst picks the best value of $k$. One way to ensure this is to try out several values of $k$ and pick the clustering that gives the lowest total intra-cluster sum of squares. We can try this out with our simple data set, even though we know the correct clustering should be with $k=4$:
+
+
+```{r echo=FALSE, fig.height=4}
+k2 <- clustered.data <- kmeans(data, centers = 2, nstart = 25)
+k3 <- clustered.data <- kmeans(data, centers = 3, nstart = 25)
+k4 <- clustered.data <- kmeans(data, centers = 4, nstart = 25)
+k5 <- clustered.data <- kmeans(data, centers = 5, nstart = 25)
+
+p2 <- fviz_cluster(k2, data = data, geom = "point") + ggtitle("k = 2")
+p3 <- fviz_cluster(k3, data = data, geom = "point") + ggtitle("k = 3")
+p4 <- fviz_cluster(k4, data = data, geom = "point") + ggtitle("k = 4")
+p5 <- fviz_cluster(k5, data = data, geom = "point") + ggtitle("k = 5")
+
+plot_grid(p2,p3,p4,p5)
+```
+  
+The plots above give a visual representation of the clusterings with a differing number of clusters, but to find the optimal $k$ we can use the Elbow method. In the Elbow method we compute the total intra-cluster sum of squares for each clustering and plot our results. Then, we look for the "bend in the knee" to tell us the optimal number of clusters. In R, this can be done using the function `fviz_nbclust`:
+
+```{r echo=FALSE, fig.height=4}
+tot <- function(k) {
+  kmeans(data, k, nstart =25)$tot.withinss
+}
+
+ks <- 2:7
+totals <- sapply(ks, tot)
+
+d <- data.frame(x=ks, y=totals)
+d %>%
+  ggplot(aes(x=x, y=y)) + geom_line() + geom_point() + xlab("Number of clusters k") + 
+  ylab("Total within-clusters sum of squares") + ggtitle("Optimal number of clusters") +
+  theme_gray()
+```
+
+\vspace{3mm}
+
+As you can see, this method correctly identifies the optimal number of clusters $k=4$.
+
+\vspace{5mm}
+
+## Slightly More Interesting Example
+
+Now that we understand the basics of the k-means algorithm, we can utilize it on a much more interesting data set. The data that I am going to use was given to me as part of the interview process for the Atlanta Braves. The data set is Trackman pitch-level data from the 2018 MLB season. The goal is to see if we can cluster pitches together by their pitch type using k-means. The pitch-types in this data set are Fastball, Cutter, Slider, Curveball, and Changeup. Even though in this case we know that the optimal number of clusters should be five, we can continue with this analysis assuming we did not know the specific pitch types. 
+
+An important thing to note about the k-means algorithm is that the variables need to be scaled properly for the best results. We did not have to do this in our previous example because we used data that all had standard deviation 1. The variables that we will use to cluster pitches are: release speed, x-movement, z-movement, release spin rate, spin direction, release position x, release position z, release extension, plate x, and plate z. For reference, here is plot of the release speed and spin rate by pitch type:
+
+```{r echo=FALSE, fig.height=4}
+pitch.data <- na.omit(read.csv("PitchData.csv"))
+pitches.data <- pitch.data %>%
+    filter(Pitch_Type %in% c("Fastball","ChangeUp","Curveball", "Slider", "Cutter") & release_speed < 101 
+           & release_spin_rate > 800 & release_spin_rate < 3100 & release_speed > 55) 
+  
+ggplot(pitches.data, aes(x=release_speed, y=release_spin_rate, colour=Pitch_Type)) + geom_point() + theme_gray()
+```
+
+Now we will implement k-means. Below we can see the elbow plot of the clustering:
+
+```{r echo=FALSE, include=FALSE}
+pitch.data <- scale(pitches.data %>%
+   select("release_speed", "release_spin_rate", "x_movement", "z_movement", "plate_z", "plate_x", "release_extension",
+         "release_pos_z", "release_pos_x", "spin_dir"))
+tot <- function(k) {
+  kmeans(pitch.data, k, nstart =25)$tot.withinss
+}
+
+ks <- 2:9
+totals <- sapply(ks, tot)
+```
+
+```{r echo=FALSE, fig.height=4}
+d <- data.frame(x=ks, y=totals)
+d %>%
+  ggplot(aes(x=x, y=y)) + geom_line() + geom_point() + xlab("Number of clusters k") + 
+  ylab("Total within-clusters sum of squares") + ggtitle("Optimal number of clusters") +
+  theme_gray()
+```
+
+We can see that the optimal number of clusters seems to be four or five. This makes sense, since cutters are very similar to fastballs and sliders and can be easily classified as either one without knowing who the pitcher is. If we knew who the pitcher was, we could much more easily classify those pitches as cutters. Using $k=5$, we can examine our clusters and their first two principle components:
+
+```{r echo=FALSE}
+clustered.data <- kmeans(pitch.data, centers = 5, nstart = 25, iter.max=20)
+fviz_cluster(clustered.data, data = pitch.data, geom = "point")
+```
+
+We can see that the first principle component explains 24.1% and the second only 20.4%. This is unsurprising given the dimensionality of the pitch data. Analyzing these clusters even more we can figure out which cluster belongs to which pitch:
+
+```{r echo=FALSE, message=FALSE}
+knitr::kable(pitches.data %>%
+   select("release_speed", "release_spin_rate", "x_movement", "z_movement", "spin_dir") %>%
+  mutate(Cluster = clustered.data$cluster) %>%
+  group_by(Cluster) %>%
+  summarise_all("mean"))
+
+knitr::kable(pitches.data %>%
+  group_by(Pitch_Type) %>%
+   select("release_speed", "release_spin_rate", "x_movement", "z_movement",  "spin_dir") %>%
+  summarise_all("mean"))
+```
+
+Although the pitches are not perfectly clustered, we can see that cluster 1 represents curveballs, cluster 2 represents fastballs, cluster 3 sliders, cluster 4 cutters, and cluster 5 is changeups. 
+
+## Conclusion
+
+K-means clustering is a standard unsupervised learning algorithm that most every analyst should be familiar with (especially if you want to get a job with the Tigers I guess). I have presented the simplest variation of k-means--there are many more specific extensions out there. The algorithm is an efficient way to cluster data with numerical variables to get a better understanding of the data you are working with. Plus, it comes with cool visualization tools to enhance any explanation or argument. 
+
+
+
+
